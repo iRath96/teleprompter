@@ -240,7 +240,6 @@ class TeleprompterApp: App {
         let queue = DispatchQueue.global(qos: .userInteractive)
         timer = queue.schedule(after: queue.now, interval: .milliseconds(500)) {
             do {
-                print("actions!")
                 try self.makeActions()
             } catch {
             }
