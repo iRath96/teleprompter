@@ -13,9 +13,21 @@ public class TeleprompterModel: ObservableObject {
         let text: String
     }
     
+    enum State {
+    case paused
+    case playing
+    }
+    
+    @Published var state: State = .paused
+    
     @Published var lines: [Line] = []
     @Published var shift: CGFloat = 0
     @Published var fontScale: CGFloat = 0.1
+    
+    @Published var currentTime: Float = 0
+    @Published var duration: Float = 0
+    
+    @Published var start: () -> Void = {}
 }
 
 struct ContentView: View {
@@ -27,26 +39,53 @@ struct ContentView: View {
             let font = Font(CTFont(.application, size: fontSize))
             let lineHeight = fontSize * 1.1
             
+            let statusFont = Font(CTFont(.application, size: fontSize / 4))
+            
             ZStack(alignment: .leading) {
                 Color.black.ignoresSafeArea()
                 
-                Text("▶")
-                .offset(x: -fontSize * 0.2, y: -fontSize * 0.02)
-                .opacity(0.5)
-                
-                Divider()
-                
-                VStack(spacing: 0) {
-                    ForEach(model.lines) { line in
-                        Text(line.text)
+                if model.state == .paused {
+                    Image(systemName: "play.circle")
+                        .frame(maxWidth: .infinity)
+                        .onTapGesture {
+                            model.start()
+                        }
+                } else {
+                    Color.white
+                        .opacity(0.1)
+                        .frame(height: lineHeight)
+                        .overlay(Divider(), alignment: .top)
+                        .overlay(Divider(), alignment: .center)
+                        .overlay(Divider(), alignment: .bottom)
+                    
+                    VStack(spacing: 0) {
+                        ForEach(model.lines) { line in
+                            Text(line.text)
+                        }
+                        .frame(height: lineHeight)
                     }
-                    .frame(height: lineHeight)
+                    .frame(height: lineHeight, alignment: .top)
+                    .frame(maxWidth: .infinity)
+                    .offset(y: floor(-(model.shift - 0.45) * lineHeight))
+                    
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .black, location: 0.04),
+                            .init(color: .black.opacity(0), location: 0.2),
+                            .init(color: .black.opacity(0), location: 0.8),
+                            .init(color: .black, location: 1)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 }
-                .frame(height: lineHeight, alignment: .top)
-                .frame(maxWidth: .infinity)
-                .offset(y: floor(-(model.shift - 0.45) * lineHeight))
-                //.animation(.linear(duration: 0.1), value: model.shift)
+                
+                Text(verbatim: .init(format: "%.1fs / %.1fs", model.currentTime, model.duration))
+                    .font(statusFont)
+                    .offset(y: fontSize / 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .foregroundColor(.white)
             .font(font)
             .frame(minWidth: 0, minHeight: 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -55,18 +94,22 @@ struct ContentView: View {
 }
 
 struct ContentView_Previews: PreviewProvider {
-    static func makeModel() -> TeleprompterModel {
+    static func makeModel(state: TeleprompterModel.State) -> TeleprompterModel {
         let model = TeleprompterModel()
         model.lines = [
             .init(id: 0, text: "Hello, world!"),
             .init(id: 1, text: "This is a test.")
         ]
+        model.state = state
         model.shift = 1
+        model.duration = 12.345
         return model
     }
     
     static var previews: some View {
-        ContentView(model: makeModel())
-        .frame(width: 500, height: 500)
+        ContentView(model: makeModel(state: .paused))
+            .frame(width: 500, height: 500)
+        ContentView(model: makeModel(state: .playing))
+            .frame(width: 500, height: 500)
     }
 }

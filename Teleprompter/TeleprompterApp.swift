@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct ScheduledAction {
     enum Action {
@@ -38,14 +39,14 @@ func estimateSchedule(forText text: String) -> ([Float], Float) {
     var currentTime: Float = 0
     for (index, char) in text.enumerated() {
         schedule[index] = currentTime
-        if char.isWhitespace {
+        if char.isWhitespace || char == "-" || char == "(" || char == ")" {
             //
         } else if char.isLetter {
-            currentTime += 0.06
+            currentTime += 0.055
         } else if char.isPunctuation {
-            currentTime += 0.45
+            currentTime += 0.55
         } else if char.isNumber {
-            currentTime += 0.15
+            currentTime += 0.20
         }
     }
     
@@ -54,7 +55,7 @@ func estimateSchedule(forText text: String) -> ([Float], Float) {
 
 @main
 class TeleprompterApp: App {
-    private let timer = Timer.publish(every: 0.02, on: .main, in: .common).autoconnect()
+    private var timer: Cancellable? = nil
     
     private var teleprompterModel = TeleprompterModel()
     
@@ -75,14 +76,20 @@ class TeleprompterApp: App {
         get { return currentLineIndex < lines.count }
     }
     
-    private func reset() {
-        startTime = CFAbsoluteTimeGetCurrent()
+    private func startPresenting() {
+        startTime = CFAbsoluteTimeGetCurrent() + 5
         nextActionIndex = 0
         currentLineIndex = 0
+        
+        let queue = DispatchQueue.global(qos: .userInteractive)
+        timer = queue.schedule(after: queue.now, interval: .milliseconds(20)) {
+            self.tick()
+        }
     }
     
     private func tick() {
         let currentTime = Float(CFAbsoluteTimeGetCurrent() - startTime)
+        
         while hasRemainingActions && currentTime >= actions[nextActionIndex].startTime {
             do {
                 try dispatchAction(actions[nextActionIndex].action)
@@ -97,12 +104,23 @@ class TeleprompterApp: App {
             currentLineIndex += 1
         }
         
-        teleprompterModel.shift = CGFloat(currentLineIndex)
-        if hasRemainingLines {
-            let currentLine = lines[currentLineIndex]
-            teleprompterModel.shift += CGFloat(
-                (currentTime - currentLine.startTime) / currentLine.duration
-            )
+        var shift: CGFloat
+        if currentTime >= 0 {
+            shift = CGFloat(currentLineIndex)
+            
+            if hasRemainingLines {
+                let currentLine = lines[currentLineIndex]
+                shift += CGFloat(
+                    (currentTime - currentLine.startTime) / currentLine.duration
+                )
+            }
+        } else {
+            shift = CGFloat(currentTime)
+        }
+        
+        DispatchQueue.main.sync {
+            teleprompterModel.shift = shift
+            teleprompterModel.currentTime = currentTime
         }
     }
     
@@ -116,6 +134,37 @@ class TeleprompterApp: App {
         
         default:
             break
+        }
+    }
+    
+    private func makeActions() throws {
+        actions = []
+        
+        var currentTime: Float = 0
+        func addAction(_ action: ScheduledAction.Action, withDuration duration: Float = 0) {
+            actions.append(ScheduledAction(startTime: currentTime, duration: duration, action: action))
+            currentTime += duration
+        }
+        
+        let notes = try KeynoteInterface.getPresenterNotes()
+        for (index, note) in notes.enumerated() {
+            if index > 0 {
+                addAction(.nextSlide, withDuration: 1)
+            }
+            
+            for (index, textS) in note.split(separator: "[>]").enumerated() {
+                if index > 0 {
+                    addAction(.nextAnimation, withDuration: 0.25)
+                }
+                
+                let text = String(textS).trimmingCharacters(in: .whitespacesAndNewlines)
+                let (schedule, duration) = estimateSchedule(forText: text)
+                addAction(.text(text, schedule), withDuration: duration)
+            }
+        }
+        
+        DispatchQueue.main.sync {
+            teleprompterModel.duration = currentTime
         }
     }
     
@@ -176,46 +225,41 @@ class TeleprompterApp: App {
             ))
         }
         
-        teleprompterModel.lines = lines.enumerated().map { (index, line) in
-            TeleprompterModel.Line(id: index, text: line.text)
+        DispatchQueue.main.sync {
+            teleprompterModel.lines = lines.enumerated().map { (index, line) in
+                TeleprompterModel.Line(id: index, text: line.text)
+            }
         }
     }
     
     required init() {
-        DispatchQueue.main.async {
+        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != nil {
+            return
+        }
+        
+        let queue = DispatchQueue.global(qos: .userInteractive)
+        timer = queue.schedule(after: queue.now, interval: .milliseconds(500)) {
             do {
-                var actions: [ScheduledAction] = []
-                var currentTime: Float = 0
-                
-                func addAction(_ action: ScheduledAction.Action, withDuration duration: Float = 0) {
-                    actions.append(ScheduledAction(startTime: currentTime, duration: duration, action: action))
-                    currentTime += duration
-                }
-                
-                let notes = try KeynoteInterface.getPresenterNotes()
-                for (index, note) in notes.enumerated() {
-                    if index > 0 {
-                        addAction(.nextSlide, withDuration: 1)
-                    }
-                    
-                    for (index, textS) in note.split(separator: "[>]").enumerated() {
-                        if index > 0 {
-                            addAction(.nextAnimation)
-                        }
-                        
-                        let text = String(textS).trimmingCharacters(in: .whitespacesAndNewlines)
-                        let (schedule, duration) = estimateSchedule(forText: text)
-                        addAction(.text(text, schedule), withDuration: duration)
-                    }
-                }
-                
-                self.actions = actions
-                self.makeLinesFromActions()
-                self.reset()
-                
-                try KeynoteInterface.startPresenting()
+                print("actions!")
+                try self.makeActions()
             } catch {
-                print(error)
+            }
+        }
+        
+        teleprompterModel.start = {
+            self.teleprompterModel.state = .playing
+            self.teleprompterModel.shift = -100
+            
+            queue.async {
+                do {
+                    try self.makeActions()
+                    self.makeLinesFromActions()
+                    
+                    self.startPresenting()
+                    try KeynoteInterface.startPresenting()
+                } catch {
+                    print(error)
+                }
             }
         }
     }
@@ -223,9 +267,6 @@ class TeleprompterApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: teleprompterModel)
-            .onReceive(timer) { input in
-                self.tick()
-            }
         }
         .windowResizability(.contentSize)
     }
