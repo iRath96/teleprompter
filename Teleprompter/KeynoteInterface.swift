@@ -29,6 +29,12 @@ class KeynoteInterface {
         end tell
     """)!
     
+    private static var selectFirstSlideScript = NSAppleScript(source: """
+        tell application "Keynote"
+            set the current slide of the front document to the first slide of the front document
+        end tell
+    """)!
+    
     @discardableResult private static func execute(script: NSAppleScript) throws -> NSAppleEventDescriptor {
         var error: NSDictionary?
         let output = script.executeAndReturnError(&error)
@@ -45,11 +51,15 @@ class KeynoteInterface {
     }
     
     static func startPresenting() throws {
-        do {
+        /*do {
             try execute(script: stopPresentingScript)
         } catch {}
+        try execute(script: startPresentingScript)*/
         
-        try execute(script: startPresentingScript)
+        do {
+            try execute(script: startPresentingScript)
+        } catch {}
+        try execute(script: selectFirstSlideScript)
     }
     
     static func showNext() throws {
