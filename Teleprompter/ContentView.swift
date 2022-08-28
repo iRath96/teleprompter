@@ -37,7 +37,7 @@ struct ContentView: View {
         GeometryReader { geometry in
             let fontSize = geometry.size.width * model.fontScale * (1 - 2 * model.fontScale)
             let font = Font(CTFont(.application, size: fontSize))
-            let lineHeight = fontSize * 1.1
+            let lineHeight = fontSize * 1.3
             
             let statusFont = Font(CTFont(.application, size: fontSize / 4))
             
