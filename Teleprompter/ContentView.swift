@@ -7,6 +7,12 @@
 
 import SwiftUI
 
+extension CGSize {
+    var minimum: CGFloat {
+        min(width, height)
+    }
+}
+
 public class TeleprompterModel: ObservableObject {
     struct Line: Identifiable {
         let id: Int
@@ -82,11 +88,14 @@ struct ContentView: View {
                     
                     if model.timeToAnimation < 4 {
                         let angle = CGFloat(1 - model.timeToAnimation / 4)
-                        Circle()
-                            .trim(from: 0, to: angle)
-                            .stroke(.white, lineWidth: geometry.size.height * 0.15)
-                            .opacity(0.3)
-                            .padding(.all, geometry.size.height * 0.3)
+                        ZStack(alignment: .center) {
+                            Circle()
+                                .trim(from: 0, to: angle)
+                                .stroke(.white, lineWidth: geometry.size.height * 0.15)
+                                .opacity(0.3)
+                                .padding(.all, geometry.size.minimum * 0.3)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
                 
@@ -122,6 +131,6 @@ struct ContentView_Previews: PreviewProvider {
         ContentView(model: makeModel(state: .paused))
             .frame(width: 500, height: 500)
         ContentView(model: makeModel(state: .playing))
-            .frame(width: 500, height: 500)
+            .frame(width: 600, height: 500)
     }
 }
