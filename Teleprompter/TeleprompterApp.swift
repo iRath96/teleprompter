@@ -42,9 +42,9 @@ func estimateSchedule(forText text: String) -> ([Float], Float) {
         if char.isWhitespace || char == "-" || char == "(" || char == ")" {
             //
         } else if char.isLetter {
-            currentTime += 0.055
+            currentTime += 0.06
         } else if char.isPunctuation {
-            currentTime += 0.55
+            currentTime += 0.60
         } else if char.isNumber {
             currentTime += 0.20
         }
@@ -121,6 +121,12 @@ class TeleprompterApp: App {
         DispatchQueue.main.sync {
             teleprompterModel.shift = shift
             teleprompterModel.currentTime = currentTime
+            
+            if hasRemainingActions && (nextActionIndex == 0 || actions[nextActionIndex - 1].duration >= 1) {
+                teleprompterModel.timeToAnimation = Float(actions[nextActionIndex].startTime - currentTime)
+            } else {
+                teleprompterModel.timeToAnimation = .infinity
+            }
         }
     }
     
@@ -149,12 +155,12 @@ class TeleprompterApp: App {
         let notes = try KeynoteInterface.getPresenterNotes()
         for (index, note) in notes.enumerated() {
             if index > 0 {
-                addAction(.nextSlide, withDuration: 1)
+                addAction(.nextSlide, withDuration: 0.60)
             }
             
             for (index, textS) in note.split(separator: "[>]").enumerated() {
                 if index > 0 {
-                    addAction(.nextAnimation, withDuration: 0.25)
+                    addAction(.nextAnimation, withDuration: 0.20)
                 }
                 
                 let text = String(textS).trimmingCharacters(in: .whitespacesAndNewlines)
