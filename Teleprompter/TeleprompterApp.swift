@@ -54,19 +54,19 @@ func estimateSchedule(forText text: String) -> ([Float], Float) {
 }
 
 @main
-class TeleprompterApp: App {
-    private var timer: Cancellable? = nil
+struct TeleprompterApp: App {
+    @State private var timer: Cancellable? = nil
     
-    private var teleprompterModel = TeleprompterModel()
+    @State private var teleprompterModel = TeleprompterModel()
     
-    private var actions: [ScheduledAction] = []
-    private var lines: [ScheduledLine] = []
+    @State private var actions: [ScheduledAction] = []
+    @State private var lines: [ScheduledLine] = []
     
-    private var startTime = CFAbsoluteTimeGetCurrent()
-    private var nextActionIndex = 0
-    private var currentLineIndex = 0
+    @State private var startTime = CFAbsoluteTimeGetCurrent()
+    @State private var nextActionIndex = 0
+    @State private var currentLineIndex = 0
     
-    private var fontStyle: CTFontUIFontType = .application
+    @State private var fontStyle: CTFontUIFontType = .application
     
     private var hasRemainingActions: Bool {
         get { return nextActionIndex < actions.count }
@@ -82,8 +82,9 @@ class TeleprompterApp: App {
         currentLineIndex = 0
         
         let queue = DispatchQueue.global(qos: .userInteractive)
-        timer = queue.schedule(after: queue.now, interval: .milliseconds(20)) {
-            self.tick()
+        timer?.cancel()
+        timer = queue.schedule(after: queue.now, interval: .milliseconds(1000/30)) {
+            tick()
         }
     }
     
@@ -119,6 +120,10 @@ class TeleprompterApp: App {
         }
         
         DispatchQueue.main.sync {
+            guard case .playing = teleprompterModel.state else {
+                return
+            }
+            
             teleprompterModel.shift = shift
             teleprompterModel.currentTime = currentTime
             
@@ -144,7 +149,7 @@ class TeleprompterApp: App {
     }
     
     private func makeActions() throws {
-        actions = []
+        actions.removeAll()
         
         var currentTime: Float = 0
         func addAction(_ action: ScheduledAction.Action, withDuration duration: Float = 0) {
@@ -160,7 +165,7 @@ class TeleprompterApp: App {
             
             for (index, textS) in note.split(separator: "[>]").enumerated() {
                 if index > 0 {
-                    addAction(.nextAnimation, withDuration: 0.20)
+                    addAction(.nextAnimation, withDuration: 0.40)
                 }
                 
                 let text = String(textS).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -238,33 +243,40 @@ class TeleprompterApp: App {
         }
     }
     
-    required init() {
-        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != nil {
-            return
-        }
+    func startPlaying() {
+        teleprompterModel = TeleprompterModel()
+        teleprompterModel.state = .playing
+        teleprompterModel.shift = -100
         
         let queue = DispatchQueue.global(qos: .userInteractive)
-        timer = queue.schedule(after: queue.now, interval: .milliseconds(500)) {
+        queue.async {
             do {
-                try self.makeActions()
+                try makeActions()
+                makeLinesFromActions()
+                
+                startPresenting()
+                try KeynoteInterface.startPresenting()
             } catch {
+                print(error)
             }
         }
-        
+    }
+    
+    func startIdle() {
+        teleprompterModel = TeleprompterModel()
         teleprompterModel.start = {
-            self.teleprompterModel.state = .playing
-            self.teleprompterModel.shift = -100
-            
-            queue.async {
-                do {
-                    try self.makeActions()
-                    self.makeLinesFromActions()
-                    
-                    self.startPresenting()
-                    try KeynoteInterface.startPresenting()
-                } catch {
-                    print(error)
-                }
+            startPlaying()
+        }
+        teleprompterModel.state = .paused
+        teleprompterModel.currentTime = 0
+        teleprompterModel.timeToAnimation = .infinity
+        
+        let queue = DispatchQueue.global(qos: .userInteractive)
+        timer?.cancel()
+        timer = queue.schedule(after: queue.now, interval: .milliseconds(500)) {
+            do {
+                try makeActions()
+            } catch {
             }
         }
     }
@@ -272,7 +284,28 @@ class TeleprompterApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: teleprompterModel)
+            .onAppear {
+                startIdle()
+            }
         }
         .windowResizability(.contentSize)
+        
+        MenuBarExtra("Teleprompter", systemImage: "text.viewfinder") {
+            switch teleprompterModel.state {
+            case .playing:
+                Button("Stop presentation") {
+                    startIdle()
+                }
+                
+                Button("Restart presentation") {
+                    startPlaying()
+                }
+            
+            case .paused:
+                Button("Start presentation") {
+                    startPlaying()
+                }
+            }
+        }
     }
 }

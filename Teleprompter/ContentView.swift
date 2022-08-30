@@ -37,6 +37,10 @@ public class TeleprompterModel: ObservableObject {
     @Published var start: () -> Void = {}
 }
 
+func clampIndex<T>(_ x: Int, _ a: [T]) -> Int {
+    return max(0, min(a.count, x))
+}
+
 struct ContentView: View {
     @ObservedObject var model: TeleprompterModel
     
@@ -47,6 +51,12 @@ struct ContentView: View {
             let lineHeight = fontSize * 1.3
             
             let statusFont = Font(CTFont(.application, size: fontSize / 4))
+            
+            let maxLinesVisible: CGFloat = geometry.size.height / lineHeight
+            let textStartIndex = clampIndex(Int(ceil(model.shift - maxLinesVisible / 2 - 1.5)), model.lines)
+            let textEndIndex = clampIndex(Int(ceil(model.shift + maxLinesVisible / 2 + 0.5)), model.lines)
+            let shift = model.shift - CGFloat(textStartIndex)
+            let lines = model.lines[textStartIndex..<textEndIndex]
             
             ZStack(alignment: .leading) {
                 Color.black.ignoresSafeArea()
@@ -66,14 +76,14 @@ struct ContentView: View {
                         .overlay(Divider(), alignment: .bottom)
                     
                     VStack(spacing: 0) {
-                        ForEach(model.lines) { line in
+                        ForEach(lines) { line in
                             Text(line.text)
                         }
                         .frame(height: lineHeight)
                     }
                     .frame(height: lineHeight, alignment: .top)
                     .frame(maxWidth: .infinity)
-                    .offset(y: floor(-(model.shift - 0.45) * lineHeight))
+                    .offset(y: floor(-(shift - 0.45) * lineHeight))
                     
                     LinearGradient(
                         gradient: Gradient(stops: [
