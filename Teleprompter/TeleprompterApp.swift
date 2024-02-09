@@ -165,7 +165,7 @@ struct TeleprompterApp: App {
             
             for (index, textS) in note.split(separator: "[>]").enumerated() {
                 if index > 0 {
-                    addAction(.nextAnimation, withDuration: 0.40)
+                    addAction(.nextAnimation, withDuration: 0.0)
                 }
                 
                 let text = String(textS).trimmingCharacters(in: .whitespacesAndNewlines)
